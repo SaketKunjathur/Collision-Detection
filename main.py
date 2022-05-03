@@ -1,148 +1,95 @@
-import pygame
-import sys
-import math
+import pygame, sys, random, math
 
-# constants
-SCREEN_HEIGHT = 480
-SCREEN_WIDTH = SCREEN_HEIGHT * 2
-MAP_SIZE = 8
-TILE_SIZE = ((SCREEN_WIDTH / 2) / MAP_SIZE)
-MAX_DEPTH = int(MAP_SIZE * TILE_SIZE)
-FOV = math.pi / 3
-HALF_FOV = FOV / 2
-CASTED_RAYS = 120
-STEP_ANGLE = FOV / CASTED_RAYS
-SCALE = (SCREEN_WIDTH / 2) / CASTED_RAYS
-
-# global variables
-player_x = (SCREEN_WIDTH / 2) // 2
-player_y = SCREEN_HEIGHT // 2
-player_angle = math.pi
-
-MAP = (
-    '########'
-    '# #    #'
-    '# #  ###'
-    '#      #'
-    '#      #'
-    '#  ##  #'
-    '#   #  #'
-    '########'
-)
-
-pygame.init()
-
-win = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("RAYCASTING")
+width = height = 500
+win = pygame.display.set_mode((width, height))
+pygame.display.set_caption("Elastic collisions")
 clock = pygame.time.Clock()
 
-def draw_map():
-    for row in range(8):
-        for col in range(8):
-            square  = row * MAP_SIZE + col
-            pygame.draw.rect(
-                win,
-                (200, 200, 200) if MAP[square] == '#' else (100, 100, 100),
-                (col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE - 2, TILE_SIZE - 2)
-            )
+def distanceTo(a, b):
+	distance = math.sqrt(((a.x - b.x) * (a.x - b.x)) + ((a.y - b.y) * (a.y - b.y)))
+	if (distance < 0): distance = distance * -1
+	return distance
 
-            pygame.draw.circle(win, (255, 0, 0), (player_x, player_y), 8)
+def drawCollision(firstBall, secondBall):
+	x1 = firstBall.x
+	x2 = secondBall.x
+	y1 = firstBall.y
+	y2 = secondBall.y
+	r1 = firstBall.radius
+	r2 = secondBall.radius
 
-            # draw player directions
-            pygame.draw.line(win, (0, 255, 0), (player_x, player_y),
-                                               (player_x - math.sin(player_angle) * 50,
-                                                player_y + math.cos(player_angle) * 50), 3)
+	collisionPoint = pygame.math.Vector2((x1 * r2 + x2 * r1) / (r1 + r2), (y1 * r2 + y2 * r1) / (r1 + r2))
 
-            # draw player FOV
-            pygame.draw.line(win, (0, 255, 0), (player_x, player_y),
-                                               (player_x - math.sin(player_angle - HALF_FOV) * 50,
-                                                player_y + math.cos(player_angle - HALF_FOV) * 50), 3)
+	pygame.draw.circle(win, (0, 0, 255), (collisionPoint.x, collisionPoint.y), 5)
 
-            pygame.draw.line(win, (0, 255, 0), (player_x, player_y),
-                                               (player_x - math.sin(player_angle + HALF_FOV) * 50,
-                                               player_y + math.cos(player_angle + HALF_FOV) * 50), 3)
+def calculateNewVelocities(firstBall, secondBall):
+	mass1 = firstBall.radius
+	mass2 = secondBall.radius
+	velX1 = firstBall.motion.x
+	velX2 = secondBall.motion.x
+	velY1 = firstBall.motion.y
+	velY2 = secondBall.motion.y
 
-# raycasting algorithm
-def cast_rays():
-    # define leftmost angle of FOV
-    start_angle = player_angle - HALF_FOV
+	newVelX1 = (velX1 * (mass1 - mass2) + (2 * mass2 * velX2)) / (mass1 + mass2)
+	newVelX2 = (velX2 * (mass2 - mass1) + (2 * mass1 * velX1)) / (mass1 + mass2)
+	newVelY1 = (velY1 * (mass1 - mass2) + (2 * mass2 * velY2)) / (mass1 + mass2)
+	newVelY2 = (velY2 * (mass2 - mass1) + (2 * mass1 * velY1)) / (mass1 + mass2)
+	# trace (velX1 * (mass1 - mass2) )
+	# trace (2 * mass2 * velX2)
+	# trace(newVelX1)
+	# s = 0 / 20
+	# trace(s)
 
-    # loop over casted rays
-    for ray in range(CASTED_RAYS):
-        # cast ray step by step
-        for depth in range(MAX_DEPTH):
-            # get ray target coordinates
-            target_x = player_x - math.sin(start_angle) * depth
-            target_y = player_y + math.cos(start_angle) * depth
+	firstBall.motion.x = newVelX1
+	secondBall.motion.x = newVelX2
+	firstBall.motion.y = newVelY1
+	secondBall.motion.y = newVelY2
 
-            # convert target Y coordinate to map row
-            col = int(target_x / TILE_SIZE)
-            row = int(target_y / TILE_SIZE)
+	firstBall.x = firstBall.x + newVelX1
+	firstBall.y = firstBall.y + newVelY1
+	secondBall.x = secondBall.x + newVelX2
+	secondBall.y = secondBall.y + newVelY2;
 
-            # calculate map square index
-            square = row * MAP_SIZE + col
-            if MAP[square] == '#':
-                pygame.draw.rect(win, (0, 255, 0), (col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE - 2, TILE_SIZE - 2))
+class Ball:
+	def __init__(self, rad):
+		self.x = random.randint(rad, width - rad)
+		self.y = random.randint(rad, height - rad)
+		self.radius = rad
+		self.motion = pygame.math.Vector2(random.randint(-5, 5), random.randint(-5, 5))
+		self.mass = self.radius
 
-                # draw casted ray
-                pygame.draw.line(win, (255, 255, 0), (player_x, player_y), (target_x, target_y))
+	def update(self, win):
+		self.x += self.motion.x
+		self.y += self.motion.y
+		if self.x - self.radius <= 0 or self.x + self.radius >= width:
+			self.motion.x = -self.motion.x
+		if self.y - self.radius <= 0 or self.y + self.radius >= height:
+			self.motion.y = -self.motion.y
 
-                # wall shading
-                color = 255 / (1 + depth * depth * 0.0001)
+		pygame.draw.circle(win, (0, 0, 0), (self.x, self.y), self.radius)
 
-                # fixing fish eye effect
-                depth *= math.cos(player_angle - start_angle)
-
-                # calculate wall height
-                wall_height = 21000 / (depth + 0.0001)
-
-                # fix stuck at wall
-                if wall_height > SCREEN_HEIGHT: wall_height = SCREEN_HEIGHT
-
-                # draw 3d projection rectangle by recatnagle
-                pygame.draw.rect(win, (color, color, color), (
-                    SCREEN_HEIGHT + ray * SCALE,
-                    SCREEN_HEIGHT / 2 - wall_height / 2,
-                    SCALE, wall_height))
-
-                break
-
-            # draw casted rays
-            # pygame.draw.line(win, (255, 255, 0), (player_x, player_y), (target_x, target_y), 3)
-
-        # increment angle by a single step
-        start_angle += STEP_ANGLE
+firstBall = Ball(random.randint(20, 40))
+secondBall = Ball(random.randint(20, 40))
 
 while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit(0)
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                sys.exit(0)
+	clock.tick(60)
+	for event in pygame.event.get():
+		if event.type == pygame.QUIT:
+			pygame.quit()
+			sys.exit()
+		if event.type == pygame.KEYDOWN:
+			if event.key == pygame.K_ESCAPE:
+				pygame.quit()
+				sys.exit()
 
-    pygame.draw.rect(win, (0, 0, 0), (0, 0, SCREEN_HEIGHT, SCREEN_HEIGHT))
-
-    # updateing 3d background
-    pygame.draw.rect(win, (100, 100, 100), (480, SCREEN_HEIGHT / 2, SCREEN_HEIGHT, SCREEN_HEIGHT))
-    pygame.draw.rect(win, (200, 200, 200), (480, -SCREEN_HEIGHT / 2, SCREEN_HEIGHT, SCREEN_HEIGHT))
-
-    draw_map()
-
-    # apply raycasting
-    cast_rays()
-
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT]: player_angle -= 0.1
-    if keys[pygame.K_RIGHT]: player_angle += 0.1
-    if keys[pygame.K_UP]:
-        player_x += -math.sin(player_angle) * 5
-        player_y += math.cos(player_angle) * 5
-    if keys[pygame.K_DOWN]:
-        player_x -= -math.sin(player_angle) * 5
-        player_y -= math.cos(player_angle) * 5
-
-    pygame.display.update()
-    clock.tick(30)
+	win.fill('white')
+	firstBall.update(win)
+	secondBall.update(win)
+	if (firstBall.x + firstBall.radius + secondBall.radius > secondBall.x
+	and firstBall.x < secondBall.x + firstBall.radius + secondBall.radius
+	and firstBall.y + firstBall.radius + secondBall.radius > secondBall.y
+	and firstBall.y < secondBall.y + firstBall.radius + secondBall.radius):
+		if (distanceTo(firstBall, secondBall) < firstBall.radius + secondBall.radius):
+			drawCollision(firstBall, secondBall)
+			calculateNewVelocities(firstBall, secondBall)
+	pygame.display.update()
